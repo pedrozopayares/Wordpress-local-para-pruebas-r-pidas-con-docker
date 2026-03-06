@@ -1,0 +1,19 @@
+# WordPress core (se genera automáticamente con Docker)
+wp/
+
+# Datos de base de datos
+db_data/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
