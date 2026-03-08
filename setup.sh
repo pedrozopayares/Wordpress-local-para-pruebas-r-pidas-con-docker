@@ -2,7 +2,19 @@
 # Don't use set -e so individual non-critical failures don't stop the whole script
 
 WP_PATH="/var/www/html"
-WP="wp --path=${WP_PATH} --allow-root"
+
+# Create a wp-cli config to increase memory limit (WooCommerce needs it)
+cat > /tmp/wp-cli.yml <<'EOF'
+apache_modules:
+  - mod_rewrite
+EOF
+
+# Wrapper function for wp-cli with higher memory
+wp_cmd() {
+  php -d memory_limit=512M "$(which wp)" --path="${WP_PATH}" --allow-root "$@"
+}
+
+WP="wp_cmd"
 
 # ── Configuración ──────────────────────────────────────────
 SITE_URL="http://localhost:8080"
@@ -122,6 +134,38 @@ fi
 $WP plugin delete akismet --quiet 2>/dev/null || true
 $WP plugin delete hello --quiet 2>/dev/null || true
 
+# Impactos Multi-Currency (plugin local)
+if $WP plugin is-installed impactos-multi-currency 2>/dev/null; then
+  echo "  ✅ Impactos Multi-Currency ya instalado"
+  $WP plugin activate impactos-multi-currency || true
+else
+  echo "  📦 Activando Impactos Multi-Currency..."
+  $WP plugin activate impactos-multi-currency || true
+fi
+
+# Asegurar opciones por defecto del plugin multi-moneda
+# (La migración interna del plugin necesita que WC ya esté corriendo)
+echo "  💱 Configurando monedas adicionales (USD, EUR)..."
+$WP eval '
+  $stored = get_option("imc_currencies", []);
+  if (!is_array($stored)) $stored = [];
+  $changed = false;
+  if (!isset($stored["USD"])) {
+    $stored["USD"] = ["code"=>"USD","name"=>"US Dollar","symbol"=>"$","position"=>"left","decimals"=>2,"decimal_sep"=>".","thousand_sep"=>","];
+    $changed = true;
+  }
+  if (!isset($stored["EUR"])) {
+    $stored["EUR"] = ["code"=>"EUR","name"=>"Euro","symbol"=>"€","position"=>"right_space","decimals"=>2,"decimal_sep"=>",","thousand_sep"=>"."];
+    $changed = true;
+  }
+  if ($changed) update_option("imc_currencies", $stored);
+
+  $map = get_option("imc_language_currency_map", false);
+  if (false === $map || !is_array($map) || !isset($map["es"])) {
+    update_option("imc_language_currency_map", ["es"=>"COP","en"=>"USD"]);
+  }
+' 2>/dev/null || true
+
 # ── Instalar tema ────────────────────────────────────────
 echo "🎨 Configurando tema..."
 if ! $WP theme is-installed hello-elementor; then
@@ -159,10 +203,27 @@ echo "📦 Creando productos de prueba..."
 
 PRODUCT_COUNT=$($WP post list --post_type=product --format=count 2>/dev/null || echo "0")
 if [ "$PRODUCT_COUNT" -eq "0" ]; then
-  $WP wc product create --user=admin --name="Producto Test 1" --type=simple --regular_price="50000" --description="Producto de prueba número 1" --short_description="Producto test" --status=publish 2>/dev/null || true
-  $WP wc product create --user=admin --name="Producto Test 2" --type=simple --regular_price="120000" --sale_price="99000" --description="Producto de prueba número 2 con descuento" --short_description="Producto en oferta" --status=publish 2>/dev/null || true
-  $WP wc product create --user=admin --name="Producto Test 3" --type=simple --regular_price="35000" --description="Producto de prueba número 3" --short_description="Producto económico" --status=publish 2>/dev/null || true
-  echo "  ✅ 3 productos de prueba creados"
+  P1=$($WP wc product create --user=admin --name="Producto Test 1" --type=simple --regular_price="50000" --description="Producto de prueba número 1" --short_description="Producto test" --status=publish --porcelain 2>/dev/null || echo "0")
+  P2=$($WP wc product create --user=admin --name="Producto Test 2" --type=simple --regular_price="120000" --sale_price="99000" --description="Producto de prueba número 2 con descuento" --short_description="Producto en oferta" --status=publish --porcelain 2>/dev/null || echo "0")
+  P3=$($WP wc product create --user=admin --name="Producto Test 3" --type=simple --regular_price="35000" --description="Producto de prueba número 3" --short_description="Producto económico" --status=publish --porcelain 2>/dev/null || echo "0")
+
+  # Multi-currency prices (USD + EUR) for test products
+  if [ "$P1" != "0" ]; then
+    $WP post meta update "$P1" _imc_regular_price_USD "12" 2>/dev/null || true
+    $WP post meta update "$P1" _imc_regular_price_EUR "11" 2>/dev/null || true
+  fi
+  if [ "$P2" != "0" ]; then
+    $WP post meta update "$P2" _imc_regular_price_USD "29" 2>/dev/null || true
+    $WP post meta update "$P2" _imc_sale_price_USD "24" 2>/dev/null || true
+    $WP post meta update "$P2" _imc_regular_price_EUR "27" 2>/dev/null || true
+    $WP post meta update "$P2" _imc_sale_price_EUR "22" 2>/dev/null || true
+  fi
+  if [ "$P3" != "0" ]; then
+    $WP post meta update "$P3" _imc_regular_price_USD "8" 2>/dev/null || true
+    $WP post meta update "$P3" _imc_regular_price_EUR "7" 2>/dev/null || true
+  fi
+
+  echo "  ✅ 3 productos de prueba creados (con precios en COP, USD y EUR)"
 else
   echo "  ✅ Ya existen ${PRODUCT_COUNT} productos"
 fi
@@ -242,6 +303,10 @@ echo "  Usuario: ${ADMIN_USER}"
 echo "  Clave:   ${ADMIN_PASS}"
 echo ""
 echo "  Plugins: WooCommerce, Elementor, Query Monitor,"
-echo "           WP Mail SMTP, WordPress Importer"
+echo "           WP Mail SMTP, WordPress Importer,"
+echo "           Impactos Multi-Currency"
+echo ""
+echo "  Monedas: COP (principal), USD, EUR"
+echo "  Shortcode: [imc_currency_switcher]"
 echo ""
 echo "════════════════════════════════════════════════════════"
