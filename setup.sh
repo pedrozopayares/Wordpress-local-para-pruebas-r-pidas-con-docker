@@ -195,6 +195,35 @@ $WP option update woocommerce_enable_signup_and_login_from_checkout "yes"
 $WP option update woocommerce_enable_checkout_login_reminder "yes"
 $WP option update woocommerce_onboarding_profile '{"skipped":true}' --format=json
 
+# ── Métodos de pago ───────────────────────────────────────
+echo "💳 Configurando métodos de pago..."
+
+# Contra entrega (COD)
+$WP option update woocommerce_cod_settings --format=json '{
+  "enabled":"yes",
+  "title":"Pago contra entrega",
+  "description":"Paga al recibir tu pedido.",
+  "instructions":"Paga al recibir tu pedido en la puerta de tu casa u oficina.",
+  "enable_for_methods":"",
+  "enable_for_virtual":"yes"
+}' 2>/dev/null || true
+
+# Transferencia bancaria (BACS)
+$WP option update woocommerce_bacs_settings --format=json '{
+  "enabled":"yes",
+  "title":"Transferencia bancaria",
+  "description":"Realiza tu pago mediante transferencia bancaria. El pedido se procesará una vez se confirme el pago.",
+  "instructions":"Realiza la transferencia a:\nBanco: Banco de prueba\nCuenta: 1234567890\nTitular: Impactos Test\nNIT: 900.000.000-1"
+}' 2>/dev/null || true
+
+# Pagos por cheque (útil para pruebas)
+$WP option update woocommerce_cheque_settings --format=json '{
+  "enabled":"yes",
+  "title":"Pago con cheque",
+  "description":"Envía un cheque a nuestra dirección. El pedido se procesará al recibir el pago.",
+  "instructions":"Envía tu cheque a: Calle Test 123, Bogotá, Colombia."
+}' 2>/dev/null || true
+
 # Crear páginas de WooCommerce si no existen
 $WP wc --user=admin tool run install_pages 2>/dev/null || true
 
@@ -240,7 +269,10 @@ if ! $WP post list --post_type=page --name=nosotros --format=count | grep -q "1"
 fi
 
 # Configurar página de inicio estática
-SHOP_PAGE_ID=$($WP option get woocommerce_shop_page_id 2>/dev/null || echo "0")
+# IMPORTANTE: La página de Shop NO puede ser page_on_front porque WordPress la
+# renderizaría con page.php en vez de archive-product.php y no se verían productos.
+# Creamos una página "Inicio" separada con shortcode de productos.
+
 BLOG_PAGE_EXISTS=$($WP post list --post_type=page --name=blog --format=count 2>/dev/null || echo "0")
 if [ "$BLOG_PAGE_EXISTS" -eq "0" ]; then
   BLOG_PAGE_ID=$($WP post create --post_type=page --post_title="Blog" --post_name="blog" --post_status=publish --porcelain)
@@ -248,13 +280,20 @@ else
   BLOG_PAGE_ID=$($WP post list --post_type=page --name=blog --field=ID 2>/dev/null || echo "0")
 fi
 
+HOME_PAGE_EXISTS=$($WP post list --post_type=page --name=inicio --format=count 2>/dev/null || echo "0")
+if [ "$HOME_PAGE_EXISTS" -eq "0" ]; then
+  HOME_PAGE_ID=$($WP post create --post_type=page --post_title="Inicio" --post_name="inicio" --post_status=publish \
+    --post_content='<!-- wp:heading {"level":2} --><h2>Bienvenido a la tienda</h2><!-- /wp:heading --><!-- wp:shortcode -->[products limit="12" columns="3" orderby="date" order="DESC"]<!-- /wp:shortcode -->' --porcelain)
+else
+  HOME_PAGE_ID=$($WP post list --post_type=page --name=inicio --field=ID 2>/dev/null || echo "0")
+fi
+
 $WP option update show_on_front "page"
+$WP option update page_on_front "${HOME_PAGE_ID}"
 $WP option update page_for_posts "${BLOG_PAGE_ID}"
 
-# Intentar poner la tienda como página de inicio
-if [ "$SHOP_PAGE_ID" != "0" ] && [ -n "$SHOP_PAGE_ID" ]; then
-  $WP option update page_on_front "${SHOP_PAGE_ID}"
-fi
+# Desactivar modo "Coming Soon" de WooCommerce (bloquea la visualización de la tienda)
+$WP option update woocommerce_coming_soon "no" 2>/dev/null || true
 
 # ── Configurar email con MailHog ──────────────────────────
 echo "📧 Configurando email con MailHog..."
@@ -307,6 +346,7 @@ echo "           WP Mail SMTP, WordPress Importer,"
 echo "           Impactos Multi-Currency"
 echo ""
 echo "  Monedas: COP (principal), USD, EUR"
+echo "  Pagos:   Contra entrega, Transferencia, Cheque"
 echo "  Shortcode: [imc_currency_switcher]"
 echo ""
 echo "════════════════════════════════════════════════════════"
