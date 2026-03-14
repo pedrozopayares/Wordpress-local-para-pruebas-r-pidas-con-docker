@@ -130,9 +130,27 @@ else
   $WP plugin activate query-monitor || true
 fi
 
+# Advanced Custom Fields (ACF)
+if ! $WP plugin is-installed advanced-custom-fields; then
+  echo "  📦 Instalando Advanced Custom Fields..."
+  $WP plugin install advanced-custom-fields --activate
+else
+  echo "  ✅ ACF ya instalado"
+  $WP plugin activate advanced-custom-fields || true
+fi
+
 # Eliminar plugins por defecto que no se usan
 $WP plugin delete akismet --quiet 2>/dev/null || true
 $WP plugin delete hello --quiet 2>/dev/null || true
+
+# ACF Forms Frontend Creator (plugin local)
+if $WP plugin is-installed acf-forms-frontend-creator 2>/dev/null; then
+  echo "  ✅ ACF Forms Frontend Creator ya instalado"
+  $WP plugin activate acf-forms-frontend-creator || true
+else
+  echo "  📦 Activando ACF Forms Frontend Creator..."
+  $WP plugin activate acf-forms-frontend-creator || true
+fi
 
 # Impactos Multi-Currency (plugin local)
 if $WP plugin is-installed impactos-multi-currency 2>/dev/null; then
@@ -342,11 +360,14 @@ echo "  Usuario: ${ADMIN_USER}"
 echo "  Clave:   ${ADMIN_PASS}"
 echo ""
 echo "  Plugins: WooCommerce, Elementor, Query Monitor,"
-echo "           WP Mail SMTP, WordPress Importer,"
-echo "           Impactos Multi-Currency"
+echo "           WP Mail SMTP, WordPress Importer, ACF,"
+echo "           ACF Forms Frontend Creator, Impactos Multi-Currency"
 echo ""
 echo "  Monedas: COP (principal), USD, EUR"
 echo "  Pagos:   Contra entrega, Transferencia, Cheque"
-echo "  Shortcode: [imc_currency_switcher]"
+echo "  Shortcodes:"
+echo "    [imc_currency_switcher]"
+echo "    [acf_frontend_form post_type=\"organizacion-esal\"]"
+echo "    [acf_frontend_form field_group=\"group_69b42dfb12d85\"]"
 echo ""
 echo "════════════════════════════════════════════════════════"
