@@ -1,5 +1,7 @@
 # WordPress core (se genera automáticamente con Docker)
 wp/
+Documentación
+FormulariosViejos/
 
 # Datos de base de datos
 db_data/
